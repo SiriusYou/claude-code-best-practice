@@ -20,6 +20,7 @@ Claude Code 最佳实践仓库 — 个人开发者快速上手与深度使用手
   - [Level 1 — 基础配置（立即见效）](#level-1--基础配置立即见效)
   - [Level 2 — 工作流自动化（日常提效）](#level-2--工作流自动化日常提效)
   - [Level 3 — 编排系统（复杂项目）](#level-3--编排系统复杂项目)
+  - [Level 4 — Agent Teams（多代理协作）](#level-4--agent-teams多代理协作)
 - [实战模板](#实战模板)
 - [常见问题](#常见问题)
 - [调试与维护](#调试与维护)
@@ -133,6 +134,7 @@ claude
 | **Skills** | `.claude/skills/*/SKILL.md` | 结构化知识模块 — 可被预加载或按需调用 | 按需 |
 | **Agents** | `.claude/agents/*.md` | 自治代理 — 独立上下文、独立权限、独立模型 | 按需 |
 | **Hooks** | `.claude/hooks/` | 事件驱动脚本 — 工具调用前后自动执行 | 进阶 |
+| **Agent Teams** | 自然语言 prompt 创建 | 多会话并行协作 — 共享任务列表 + 消息通信 | 实验性 |
 
 ### 关键区别：Command vs Skill vs Agent
 
@@ -456,6 +458,215 @@ Command 通过 Skill 工具调用 weather-svg-creator（Skill，作为动作）
 
 ---
 
+### Level 4 — Agent Teams（多代理协作）
+
+> 适用：需要多人并行探索或大规模重构的复杂任务
+>
+> **实验性功能** — 默认关闭，需要手动启用。
+
+#### 4.1 什么是 Agent Teams
+
+Agent Teams 是 Claude Code 的**多会话协作机制** —— 一个 lead（主会话）协调多个 teammate（独立 Claude Code 实例），通过共享任务列表和消息系统并行工作。
+
+**与 Subagent 的核心区别：**
+
+```
+Subagent（子代理）                    Agent Teams（代理团队）
+───────────────                     ───────────────────
+同一会话内的上下文分支                  多个独立 Claude Code 会话
+只能向主代理汇报结果                   teammates 之间可以直接通信
+主代理管理所有工作                     共享任务列表 + 自行认领任务
+适合：聚焦任务，只需要结果              适合：需要讨论、挑战、协作的复杂工作
+Token 消耗较低                        Token 消耗显著更高（每个 teammate 独立上下文）
+```
+
+**什么时候值得用 Agent Teams：**
+- 并行代码审查（安全、性能、测试覆盖各一个 teammate）
+- 新模块/功能开发（每个 teammate 负责一个独立模块）
+- 竞争性假设调试（多个 teammate 同时验证不同假设并互相挑战）
+- 跨层协调（前端、后端、测试各由不同 teammate 负责）
+
+**不适合用的场景：** 顺序依赖的任务、需要编辑同一文件的工作、简单任务（协调开销 > 收益）。
+
+#### 4.2 启用与搭建
+
+**Step 1：启用实验性功能**
+
+在 `.claude/settings.json` 中添加：
+
+```json
+{
+  "env": {
+    "CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS": "1"
+  }
+}
+```
+
+或启动时通过环境变量：
+
+```bash
+CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude
+```
+
+**Step 2：选择显示模式**
+
+| 模式 | 说明 | 要求 |
+|------|------|------|
+| `in-process`（默认） | 所有 teammate 在同一终端运行，`Shift+Down` 切换 | 无 |
+| `tmux` | 每个 teammate 独立面板，同时可见 | 安装 tmux |
+| `auto` | 在 tmux 会话中自动使用分屏，否则 in-process | — |
+
+配置方式：
+
+```json
+{
+  "teammateMode": "auto"
+}
+```
+
+或单次会话覆盖：
+
+```bash
+claude --teammate-mode in-process
+```
+
+**Step 3（可选）：安装 tmux 获得分屏体验**
+
+```bash
+# macOS
+brew install tmux
+
+# 启动 tmux 会话后再启动 Claude
+tmux new -s dev
+CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1 claude
+```
+
+#### 4.3 团队协调机制
+
+Agent Teams 的协调基于三个核心组件：
+
+```
+┌─────────────────────────────────────────────────────────┐
+│                    Team Lead（你的主会话）                 │
+│            创建团队、分配任务、综合结果                      │
+└───────────────┬──────────────┬──────────────┬───────────┘
+                │              │              │
+          ┌─────▼─────┐ ┌─────▼─────┐ ┌─────▼─────┐
+          │ Teammate A │ │ Teammate B │ │ Teammate C │
+          │ 独立上下文  │ │ 独立上下文  │ │ 独立上下文  │
+          └─────┬─────┘ └─────┬─────┘ └─────┬─────┘
+                │              │              │
+          ┌─────▼──────────────▼──────────────▼─────┐
+          │            共享任务列表                    │
+          │  ☐ 任务 1（pending → in_progress → done） │
+          │  ☐ 任务 2（可设置依赖关系）                 │
+          │  ☐ 任务 3（teammate 自行认领）              │
+          └─────────────────────────────────────────┘
+```
+
+**共享任务列表：**
+- Lead 创建任务，teammate 自行认领或由 lead 指派
+- 任务有三种状态：`pending` → `in_progress` → `completed`
+- 支持任务依赖：被依赖的任务完成后，下游任务自动解锁
+- 文件锁防止多个 teammate 同时认领同一任务
+
+**消息传递：**
+- `message` — 向特定 teammate 发送消息
+- `broadcast` — 向所有 teammate 广播（谨慎使用，Token 开销随团队规模线性增长）
+- Teammate 完成或空闲时自动通知 lead
+
+**直接交互：**
+- In-process 模式：`Shift+Down` 切换 teammate，直接输入消息
+- 分屏模式：点击对应面板直接交互
+- 可以随时给任何 teammate 追加指令或纠正方向
+
+#### 4.4 TeammateIdle 与 TaskCompleted Hooks
+
+Agent Teams 引入了两个专用 hook 事件，用于实现**质量关卡**：
+
+| Hook 事件 | 触发时机 | 参数 | 用途 |
+|-----------|---------|------|------|
+| `TeammateIdle` | Teammate 即将空闲 | `teammate_name`, `team_name` | 检查工作质量，决定是否让 teammate 继续工作 |
+| `TaskCompleted` | 任务被标记为完成 | `task_id`, `task_subject`, `task_description`, `teammate_name`, `team_name` | 验证任务质量，阻止不合格的任务完成 |
+
+**关键机制 — Exit Code 2 反馈循环：**
+
+Hook 脚本的退出码决定了 Claude 的行为：
+
+```
+Exit Code 0 → 允许操作继续（teammate 空闲 / 任务完成）
+Exit Code 2 → 阻止操作并发送反馈（teammate 继续工作 / 任务退回修改）
+```
+
+**示例 — 在 `.claude/settings.json` 中配置 TeammateIdle hook：**
+
+```json
+{
+  "hooks": {
+    "TeammateIdle": [
+      {
+        "type": "command",
+        "command": "echo 'Please verify all tests pass before going idle'"
+      }
+    ]
+  }
+}
+```
+
+> **注意：** 这两个 hook 事件要求 `CLAUDE_CODE_EXPERIMENTAL_AGENT_TEAMS=1` 环境变量已设置。
+
+#### 4.5 实战示例：用 Agent Teams 构建功能
+
+本仓库的 `agent-teams/` 目录包含一个完整的实战案例 —— 用 Agent Team 构建时间编排工作流。
+
+**Prompt 示例（三人团队并行开发）：**
+
+```text
+Create an agent team to build a time orchestration workflow.
+
+Assign these teammates:
+1. Command Architect — 设计 /time-orchestrator 命令
+2. Agent Engineer — 实现 time-agent 和 time-fetcher skill
+3. Skill Designer — 创建 time-svg-creator skill 和模板
+
+All three teammates should create tasks in the shared task list
+to coordinate the data contract: {time, timezone, formatted}.
+Start all three in parallel.
+```
+
+**团队协调要点：**
+- 在 prompt 中明确每个 teammate 的职责边界
+- 通过共享任务列表约定数据契约（data contract）
+- 每个 teammate 负责不同的文件，避免冲突
+- Lead 综合结果并验证端到端流程
+
+> 完整 prompt 参考：[`agent-teams/agent-teams-prompt.md`](../agent-teams/agent-teams-prompt.md)
+> 实现详情参考：[`implementation/claude-agent-teams-implementation.md`](../implementation/claude-agent-teams-implementation.md)
+
+#### 4.6 Agent Teams 最佳实践
+
+| 实践 | 说明 |
+|------|------|
+| **团队规模 3-5 人** | 起步用 3 个 teammate，超过 5 个协调开销急剧增加 |
+| **每人 5-6 个任务** | 保持 teammate 持续有活干，不至于空转 |
+| **避免文件冲突** | 确保每个 teammate 编辑不同的文件集 |
+| **Prompt 要给足上下文** | Teammate 不继承 lead 的对话历史，需要在 spawn prompt 中包含所有必要信息 |
+| **先研究后实现** | 新手建议从代码审查、调研等只读任务开始 |
+| **定期检查进度** | 别让团队长时间无人监督运行，避免浪费 Token |
+| **要求计划审批** | 对复杂任务，让 teammate 先做计划再实现 |
+| **清理团队资源** | 结束后通过 lead 执行清理，不要让 teammate 清理 |
+
+#### 4.7 已知限制
+
+- `/resume` 和 `/rewind` 不会恢复 in-process teammate
+- 任务状态可能滞后 — 如果任务卡住，手动检查并更新
+- 每个会话只能管理一个团队
+- Teammate 不能嵌套创建自己的团队
+- 所有 teammate 继承 lead 的权限模式（创建后可单独修改）
+- 分屏模式不支持 VS Code 终端、Windows Terminal、Ghostty
+
+---
+
 ## 实战模板
 
 ### 模板 A：前端项目（React/Next.js）
@@ -564,6 +775,22 @@ your-project/
 2. 用 `/doctor` 检查 Claude Code 环境
 3. 在 ~50% 上下文使用量时手动 `/compact`
 4. 把关键指令放在文件顶部（更不容易被忽略）
+
+### Q: 个人开发者需要 Agent Teams 吗？
+
+**大多数时候不需要。** Agent Teams 设计用于需要并行探索的复杂场景。但以下情况值得一试：
+- 大规模重构（每个 teammate 负责不同模块）
+- 多角度代码审查（安全、性能、测试各一个 teammate）
+- 探索性调试（多个假设同时验证）
+
+注意 Token 消耗会显著增加（每个 teammate 独立上下文），先从 Subagent 开始，不够用时再升级到 Agent Teams。
+
+### Q: Agent Teams 和 Subagent 怎么选？
+
+- **用 Subagent** 如果：任务聚焦、只需要返回结果、不需要 teammate 间讨论
+- **用 Agent Teams** 如果：任务需要多角度探索、teammate 需要互相挑战和协调、工作量大到值得并行
+
+经验法则：**Subagent 覆盖 95% 的场景，Agent Teams 处理剩下的 5%。**
 
 ---
 
