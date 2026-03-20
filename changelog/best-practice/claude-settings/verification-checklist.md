@@ -27,6 +27,7 @@ Rules that verify settings key tables against official docs.
 | 1E | Scope Column | For each key that has a Scope column (MCP, Plugin, Permission tables), verify the scope value matches official docs (e.g., "Managed only", "Any", "Project") | content-match | settings documentation page | 2026-03-15 | v2.1.71 caught `extraKnownMarketplaces` scope wrong ("Any" → "Project"), v2.1.75 caught `autoMemoryDirectory` scope restriction. No rule existed to systematically verify scope columns |
 | 1F | Inverse Completeness | For each key in the report tables, verify it exists in official docs OR is explicitly marked as "not in official docs — unverified". Keys with no official backing must be annotated | field-level | settings documentation page + JSON schema | 2026-03-15 | Suspect keys (`sandbox.ignoreViolations`, `skipWebFetchPreflight`, etc.) stayed ON HOLD for 6 runs because no rule checked the reverse direction — items in report that shouldn't be there |
 | 1G | Edge-Case Semantics | For settings with special behavior at boundary values (e.g., `0`, empty string, `null`), verify the boundary behavior is documented and matches official docs | content-match | settings documentation page | 2026-03-15 | v2.1.75 caught `cleanupPeriodDays` zero-value behavior late; v2.1.76 added "hooks receive empty transcript_path" detail. Edge cases were under-verified |
+| 1H | File Scope Check | For each key listed in the report as a `settings.json` key (particularly Display Settings), verify it is indeed a `settings.json` key and not a `~/.claude.json`-only preference. Official docs separate "Available settings" (settings.json) from "Global config settings" (~/.claude.json). Keys in the wrong scope mislead users and may cause schema validation errors | content-match | settings documentation page "Available settings" vs "Global config settings" sections | 2026-03-18 | v2.1.78 caught `showTurnDuration` and `terminalProgressBarEnabled` listed in Display Settings as settings.json keys, but official docs explicitly state they belong in `~/.claude.json` and "Adding them to settings.json will trigger a schema validation error." No rule existed to verify file scope |
 
 ---
 
@@ -58,11 +59,11 @@ Rules that verify permission configuration accuracy.
 
 ## 4. Hooks (REDIRECTED)
 
-Hook analysis is excluded from this workflow. Hooks are maintained in the [claude-code-voice-hooks](https://github.com/shanraisshan/claude-code-voice-hooks) repo. Only verify the redirect link is still valid.
+Hook analysis is excluded from this workflow. Hooks are maintained in the [claude-code-hooks](https://github.com/shanraisshan/claude-code-hooks) repo. Only verify the redirect link is still valid.
 
 | # | Category | Check | Depth | Compare Against | Added | Origin |
 |---|----------|-------|-------|-----------------|-------|--------|
-| 4A | Hooks Redirect | Verify the hooks section in the report contains a valid redirect link to the claude-code-voice-hooks repo | exists | report file | 2026-03-05 | Hooks externalized to dedicated repo — only check redirect link validity |
+| 4A | Hooks Redirect | Verify the hooks section in the report contains a valid redirect link to the claude-code-hooks repo | exists | report file | 2026-03-05 | Hooks externalized to dedicated repo — only check redirect link validity |
 
 ---
 
