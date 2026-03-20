@@ -368,6 +368,41 @@ allowed-tools:
 4. 如有种子数据需要更新，修改 prisma/seed.ts
 ```
 
+**Skill 类型速查：** 不知道该做什么 Skill？以下 9 类覆盖了 Anthropic 内部数百个 Skill 的分类：
+
+| # | 类型 | 适用场景 | 个人开发者示例 |
+|---|------|---------|--------------|
+| 1 | **Library & API Reference** | 内部库 / Claude 容易出错的库 | `prisma-patterns` — ORM 的 edge cases 和反模式 |
+| 2 | **Product Verification** | 测试与验证（配合 Playwright/tmux） | `signup-flow-driver` — 端到端注册流程验证 |
+| 3 | **Data Fetching & Analysis** | 连接数据和监控 | `funnel-query` — 漏斗分析的查询模板 |
+| 4 | **Business Process** | 自动化重复工作流 | `standup-post` — 聚合 GitHub + 任务 → 日报 |
+| 5 | **Code Scaffolding** | 项目模板和脚手架 | `new-migration` — 迁移文件模板 + 常见 gotchas |
+| 6 | **Code Quality & Review** | 代码质量与审查 | `adversarial-review` — 新视角子代理批判式审查 |
+| 7 | **CI/CD & Deployment** | 构建、部署、监控 PR | `babysit-pr` — 监控 PR → 重试 CI → 解决冲突 |
+| 8 | **Runbooks** | 从告警/错误到结构化报告 | `oncall-runner` — 拉取告警 → 排查 → 格式化结论 |
+| 9 | **Infrastructure Ops** | 日常维护（含危险操作守护） | `orphan-cleanup` — 清理孤立资源，带确认流程 |
+
+**写好 Skill 的 6 个关键技巧：**
+
+1. **别写 Claude 已知的内容** — 聚焦于你团队/项目特有的知识，不要重复通用编程常识
+2. **维护 Gotchas 部分** — Skill 中信噪比最高的内容，随着 Claude 踩坑不断更新
+3. **用文件夹做渐进式披露** — Skill 是文件夹不是文件，用 `references/`、`scripts/`、`assets/` 组织上下文
+4. **Description 写给模型看** — 写成触发条件（"Use when..."），不是功能摘要
+5. **别绑死 Claude** — 给信息但保留灵活性，过于具体的指令在不同上下文下会变脆弱
+6. **On-Demand Hooks** — 用 `hooks:` frontmatter 注册只在 skill 激活时生效的 hook（如 `/careful` 阻止危险操作）
+
+> **Skill 是文件夹，不只是 markdown 文件。** 完整结构示例：
+> ```
+> .claude/skills/billing-lib/
+> ├── SKILL.md              # 概述 + gotchas
+> ├── references/api.md     # 详细 API 签名
+> ├── assets/template.md    # 输出模板
+> └── scripts/validate.sh   # 验证脚本
+> ```
+> Claude 会根据需要按需读取子文件 — 这就是渐进式披露（Progressive Disclosure）。
+
+更完整的说明见 [Skills 最佳实践](../best-practice/claude-skills.md)（含分发策略、度量方法、Marketplace 管理等）。
+
 #### 2.3 MCP 服务器连接
 
 在项目根目录创建 `.mcp.json` 连接外部工具：
